@@ -1,0 +1,107 @@
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <ctime>
+#include <omp.h>
+
+using namespace std;
+
+// A struct to represent a data point
+struct Point {
+    double x;
+    double y;
+};
+
+// A struct to represent a cluster
+struct Cluster {
+    Point centroid;
+    vector<Point> points;
+};
+
+// A function to calculate the Euclidean distance between two points
+double distance(Point a, Point b) {
+    return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+}
+
+// A function to assign each data point to the nearest cluster centroid
+void assign_clusters(vector<Point>& data, vector<Cluster>& clusters) {
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < data.size(); ++i) {
+        double min_dist = INFINITY;
+        int cluster_idx = 0;
+        for (int j = 0; j < clusters.size(); ++j) {
+            double dist = distance(data[i], clusters[j].centroid);
+            if (dist < min_dist) {
+                min_dist = dist;
+                cluster_idx = j;
+            }
+        }
+        #pragma omp critical
+        clusters[cluster_idx].points.push_back(data[i]);
+    }
+}
+
+// A function to calculate the mean of all data points assigned to a cluster
+Point calculate_mean(vector<Point>& points) {
+    double sum_x = 0.0;
+    double sum_y = 0.0;
+    for (auto& point : points) {
+        sum_x += point.x;
+        sum_y += point.y;
+    }
+    Point mean;
+    mean.x = sum_x / points.size();
+    mean.y = sum_y / points.size();
+    return mean;
+}
+
+// A function to update the centroids of all clusters
+void update_centroids(vector<Cluster>& clusters) {
+    #pragma omp parallel for schedule(static)
+    for (int i = 0; i < clusters.size(); ++i) {
+        clusters[i].centroid = calculate_mean(clusters[i].points);
+        clusters[i].points.clear();
+    }
+}
+
+// The main function to perform the K-Means Cluster Algorithm
+void kmeans(vector<Point>& data, int k) {
+    vector<Cluster> clusters(k);
+    srand(time(NULL));
+    for (auto& cluster : clusters) {
+        int rand_idx = rand() % data.size();
+        cluster.centroid = data[rand_idx];
+    }
+    while (true) {
+        #pragma omp parallel for schedule(static)
+        for (int i = 0; i < clusters.size(); ++i) {
+            clusters[i].points.clear();
+        }
+        assign_clusters(data, clusters);
+        Point old_centroid = clusters[0].centroid;
+        update_centroids(clusters);
+        Point new_centroid = clusters[0].centroid;
+        double diff = distance(old_centroid, new_centroid);
+        if (diff < 0.00001) {
+            break;
+        }
+    }
+}
+
+int main() {
+    // Generate some random data
+    vector<Point> data(1000);
+    srand(time(NULL));
+    for (auto& point : data) {
+        point.x = rand() % 100;
+        point.y = rand() % 100;
+    }
+    // Perform the K-Means Cluster Algorithm
+    int k = 5;
+    double start_time = omp_get_wtime();
+    kmeans(data, k);
+    double end_time = omp_get_wtime();
+    double total_time = end_time - start_time;
+    cout << "Execution time: " << total_time << " seconds" << endl;
+    return 0;
+}
